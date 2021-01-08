@@ -1,0 +1,5 @@
+**/*.pyc
+.idea
+.git
+.gitignore
+.editorconfig

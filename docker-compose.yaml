@@ -1,0 +1,87 @@
+version: '3.7'
+
+
+networks:
+  backend:
+    driver: bridge
+
+
+volumes:
+  main_db_data:
+  var_tic_tac_toe:
+  zookeeper_data:
+  kafka_data:
+
+services:
+  zookeeper:
+    image: 'bitnami/zookeeper:latest'
+    ports:
+      - '2181:2181'
+    volumes:
+      - 'zookeeper_data:/bitnami'
+    networks:
+      - backend
+    environment:
+      - ALLOW_ANONYMOUS_LOGIN=yes
+
+  kafka:
+    image: 'bitnami/kafka:latest'
+    ports:
+      - '9092:9092'
+    volumes:
+      - 'kafka_data:/bitnami'
+    networks:
+      - backend
+    environment:
+      - KAFKA_CFG_ZOOKEEPER_CONNECT=zookeeper:2181
+      - ALLOW_PLAINTEXT_LISTENER=yes
+    depends_on:
+      - zookeeper
+
+  main_db:
+    build:
+      context: ./
+      dockerfile: deploy/postgres/Dockerfile
+      args:
+        VERSION: ${POSTGRES_VERSION}
+    networks:
+      - backend
+    ports:
+      - 5432:5432
+    environment:
+      POSTGRES_DB: ${POSTGRES_MAIN_NAME}
+      POSTGRES_USER: ${POSTGRES_MAIN_USERNAME}
+      POSTGRES_PASSWORD: ${POSTGRES_MAIN_PASSWORD}
+    volumes:
+      - main_db_data:/var/lib/postgresql/data
+
+  consumer:
+    build:
+      context: ./
+      dockerfile: deploy/Dockerfile
+      target: prod
+    networks:
+      - backend
+    env_file:
+      - .env
+    depends_on:
+      - main_db
+      - kafka
+    restart: always
+    command:
+      /usr/local/bin/python consumer.py
+
+  producer:
+    build:
+      context: ./
+      dockerfile: deploy/Dockerfile
+      target: prod
+    networks:
+      - backend
+    env_file:
+      - .env
+    depends_on:
+      - main_db
+      - kafka
+    command:
+      /usr/local/bin/supercronic producer_crontab
